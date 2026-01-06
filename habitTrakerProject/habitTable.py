@@ -1,46 +1,14 @@
-import calendar
 import tkinter as tk
 from datetime import date
-from tkinter import font
+from tkinter import font, ttk
 
-
-def get_year_months_info(year):
-    months = []
-
-    for month in range(1, 13):
-        first_weekday, days_in_month = calendar.monthrange(year, month)
-
-        months.append(
-            {
-                "year": year,
-                "month_number": month,
-                "month_name": calendar.month_name[month],
-                "month_abbr": calendar.month_abbr[month],
-                "days_in_month": days_in_month,
-                "first_weekday_index": first_weekday,  # 0 = Monday
-                "first_weekday_name": calendar.day_name[first_weekday],
-                "is_leap_year": calendar.isleap(year),
-                "days": [
-                    {
-                        "day_number": day,
-                        "day_name": calendar.day_name[
-                            calendar.weekday(year, month, day)
-                        ],
-                        "day_abbr": calendar.day_abbr[
-                            calendar.weekday(year, month, day)
-                        ],
-                        "weekday_index": calendar.weekday(year, month, day),
-                    }
-                    for day in range(1, days_in_month + 1)
-                ],
-            }
-        )
-
-    return months
+from wrapper import get_year_months_info
 
 
 class HabitTable:
     def __init__(self, parent_frame, rows: int, month: int, year: int, on_update=None):
+        self.row_progress = []
+        self.entries = []
         self.frame = parent_frame
         self.year = year
         self.month = month
@@ -110,7 +78,7 @@ class HabitTable:
                 pady=1,
                 sticky="nsew",
             )
-
+            self.entries.append(habitEntry)
             for c in range(self.cols):
                 btn = tk.Button(
                     parent_frame,
@@ -127,14 +95,26 @@ class HabitTable:
                 row_buttons.append(btn)
 
             self.buttons.append(row_buttons)
-
+            progress = ttk.Progressbar(
+                parent_frame, orient="horizontal", length=100, mode="determinate"
+            )
+            progress.grid(
+                row=r + 4, column=self.cols + 3, padx=5
+            )  # column 8 after 7 buttons + entry
+            self.row_progress.append(progress)
         parent_frame.grid_columnconfigure(0, weight=2)  # habit column wider
         for c in range(1, self.cols + 1):
             parent_frame.grid_columnconfigure(c, weight=1)
 
+    def update_row_progress(self, row):
+        clicked_in_row = sum(
+            1 for c in range(self.cols) if (row, c) in self.clicked_cells
+        )
+        percent = int((clicked_in_row / self.cols) * 100)
+        self.row_progress[row]["value"] = percent
+
     def toggle_cell(self, row, col):
         btn = self.buttons[row][col]
-
         if (row, col) in self.clicked_cells:
             # uncheck
             btn["text"] = ""
@@ -145,6 +125,41 @@ class HabitTable:
             btn["text"] = "✓"
             btn["bg"] = "lightgreen"
             self.clicked_cells.add((row, col))
+        self.update_row_progress(row)
         if self.on_update:
             self.on_update(len(self.clicked_cells))
-        clicked_buttons = [self.buttons[r][c] for r, c in self.clicked_cells]
+
+    def set_clicked_cells(self, cells):
+        self.clicked_cells = {tuple(cell) for cell in cells}
+        for r, c in self.clicked_cells:
+            self.buttons[r][c]["text"] = "✓"
+            self.buttons[r][c]["bg"] = "lightgreen"
+        for r in range(self.rows):
+            self.update_row_progress(r)
+        if self.on_update:
+            self.on_update(len(self.clicked_cells))
+
+    def set_entries(self, entries_list):
+        for entry_widget, text in zip(self.entries, entries_list):
+            entry_widget.delete(0, tk.END)
+            entry_widget.insert(0, text)
+
+    def clear_all(self):
+        # Clear all clicked cells
+        self.clicked_cells.clear()
+
+        # Reset all buttons
+        for r in range(self.rows):
+            for c in range(self.cols):
+                self.buttons[r][c]["text"] = ""
+                self.buttons[r][c]["bg"] = "white"
+            # Reset row progress bar
+            self.update_row_progress(r)
+
+        # Optional: clear all entries
+        for entry in self.entries:
+            entry.delete(0, tk.END)
+
+        # Call on_update to save and update any labels/progress
+        if self.on_update:
+            self.on_update(0)
